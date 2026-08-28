@@ -1,0 +1,6 @@
+*vpn_servers
+#HostName,IP,Score,Ping,Speed,CountryLong,CountryShort,NumVpnSessions,Uptime,TotalUsers,TotalTraffic,LogType,Operator,Message,OpenVPN_ConfigData_Base64
+public-vpn-1,219.100.37.14,2940771,16,324481507,Japan,JP,62,7496507014,17761608,1195244482867970,2weeks,Example Operator,Fast server,Q09ORklH
+public-vpn-2,8.8.8.8,1000,80,100000000,United States,US,3,86400000,100,1000000,2weeks,"Example, Inc.",Backup server,Q09ORklH
+invalid-private,192.168.1.10,500,10,50000000,Private,ZZ,1,1000,1,1,none,Invalid,Invalid row,Q09ORklH
+*

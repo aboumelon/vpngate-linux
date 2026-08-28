@@ -1,2 +1,5 @@
-def main() -> None:
-    print("Hello from vpngate-linux!")
+from .cli import main
+
+__version__ = "1.0.0"
+
+__all__ = ["__version__", "main"]

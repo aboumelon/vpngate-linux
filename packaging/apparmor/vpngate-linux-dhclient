@@ -1,0 +1,5 @@
+# Narrow runtime access for the vpngate-linux address-only DHCP test.
+/run/vpngate-linux/dhclient-address-only.conf r,
+/run/vpngate-linux/dhclient-address-only Uxr,
+/run/vpngate-linux/dhclient.leases lrw,
+/run/vpngate-linux/dhclient.pid lrw,

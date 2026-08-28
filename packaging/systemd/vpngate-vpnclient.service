@@ -1,0 +1,20 @@
+[Unit]
+Description=SoftEther VPN Client for vpngate-linux
+Documentation=https://github.com/aboumelon/vpngate-linux
+After=network.target
+ConditionPathExists=!/usr/local/vpnclient/do_not_run
+
+[Service]
+Type=exec
+ExecStart=/usr/local/vpnclient/vpnclient execsvc
+Restart=on-failure
+RestartSec=3s
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+ReadOnlyPaths=/
+ReadWritePaths=/usr/local/vpnclient
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_BROADCAST CAP_NET_RAW CAP_SYS_NICE CAP_SYSLOG CAP_SETUID
+
+[Install]
+WantedBy=multi-user.target
