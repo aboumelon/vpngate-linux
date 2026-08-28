@@ -38,6 +38,7 @@ from .route_guard import (
     unprotect_server_route,
 )
 from .server_client import AllSourcesFailed, import_server_file, refresh_from_sources
+from .server_latency import probe_server_latencies
 from .server_storage import (
     CacheStore,
     SourceStore,
@@ -872,8 +873,8 @@ def servers_list(
     table = Table(title=f"Cached VPN Gate servers ({cache.fetched_at:%Y-%m-%d %H:%M UTC})")
     table.add_column("IP")
     table.add_column("Country")
-    table.add_column("Ping", justify="right")
-    table.add_column("Speed", justify="right")
+    table.add_column("Source ping", justify="right")
+    table.add_column("Source speed", justify="right")
     table.add_column("Sessions", justify="right")
     table.add_column("Uptime", justify="right")
     table.add_column("Score", justify="right")
@@ -940,8 +941,8 @@ def servers_select(
     table.add_column("Rank", justify="right")
     table.add_column("IP")
     table.add_column("Country")
-    table.add_column("Ping", justify="right")
-    table.add_column("Speed", justify="right")
+    table.add_column("Source ping", justify="right")
+    table.add_column("Source speed", justify="right")
     table.add_column("Sessions", justify="right")
     table.add_column("Score", justify="right")
     for rank, server in enumerate(selected, start=1):
@@ -967,6 +968,84 @@ def servers_select(
         )
     console.print(
         f"Next safe step: uv run vpngate softether prepare {selected[0].ip} --dry-run"
+    )
+
+
+@servers_app.command("probe")
+def servers_probe(
+    country: str | None = typer.Option(
+        None,
+        "--country",
+        help="Two-letter country code",
+    ),
+    limit: int = typer.Option(
+        20,
+        min=1,
+        max=50,
+        help="Number of cached candidates to measure",
+    ),
+    attempts: int = typer.Option(
+        3,
+        min=1,
+        max=10,
+        help="TCP connection attempts per server",
+    ),
+    timeout: float = typer.Option(
+        1.5,
+        min=0.1,
+        max=10,
+        help="Timeout for each TCP connection attempt in seconds",
+    ),
+) -> None:
+    """Measure TCP/443 latency from this computer and rank cached servers."""
+
+    try:
+        criteria = SelectionCriteria(country=country)
+        cache = CacheStore().load()
+        candidates = select_servers(cache.servers, criteria, limit=limit)
+        results = probe_server_latencies(
+            candidates,
+            attempts=attempts,
+            timeout=timeout,
+        )
+    except (FileNotFoundError, ValueError) as error:
+        console.print(f"[red]TCP probe failed:[/red] {error}")
+        raise typer.Exit(ExitCode.DATA_ERROR) from error
+
+    if not candidates:
+        console.print("[yellow]No cached server matches the country filter.[/yellow]")
+        raise typer.Exit(ExitCode.DATA_ERROR)
+
+    table = Table(title="Locally measured VPN Gate TCP latency")
+    table.add_column("Rank", justify="right")
+    table.add_column("IP")
+    table.add_column("Country")
+    table.add_column("Local TCP", justify="right")
+    table.add_column("Success", justify="right")
+    table.add_column("Source ping", justify="right")
+    table.add_column("Source speed", justify="right")
+    for rank, result in enumerate(results, start=1):
+        local_latency = (
+            f"{result.median_ms:.1f} ms"
+            if result.median_ms is not None
+            else "unreachable"
+        )
+        table.add_row(
+            str(rank),
+            str(result.server.ip),
+            result.server.country_short,
+            local_latency,
+            f"{result.successful_attempts}/{result.attempts}",
+            f"{result.server.ping_ms} ms",
+            f"{result.server.speed_mbps:.1f} Mbps",
+        )
+    console.print(table)
+    console.print(
+        f"Local TCP is the median of up to {attempts} connection attempts "
+        "to port 443 from this computer."
+    )
+    console.print(
+        "[dim]This measures connection setup latency, not VPN throughput.[/dim]"
     )
 
 

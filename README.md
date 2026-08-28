@@ -86,6 +86,16 @@ uv run vpngate servers import ~/Downloads/vpngate.csv
 Source-reported ping and speed values are estimates. They are not measurements
 from the current computer.
 
+Measure TCP connection latency from the current computer before connecting:
+
+```console
+uv run vpngate servers probe --country JP --limit 20
+```
+
+The probe makes three TCP connections to port 443 per candidate, ranks
+reachable servers by the median result, and does not establish a VPN tunnel.
+It measures connection setup latency rather than download throughput.
+
 ## Prepare SoftEther once
 
 Inspect and create the dedicated adapter and account without connecting:
@@ -138,8 +148,9 @@ sudo ./scripts/verify-real-connection.sh 219.100.37.180
 
 ## Terminal interface
 
-The TUI shows cached servers and provides Connect, Disconnect, and Status
-actions. Root privileges are needed because those actions change networking:
+The TUI shows cached servers and provides local TCP latency measurement,
+Connect, Disconnect, and Status actions. Root privileges are needed because
+the connection actions change networking:
 
 ```console
 sudo .venv/bin/vpngate gui

@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from textual.widgets import DataTable, Static
 
+from vpngate_linux.server_latency import TcpLatencyResult
 from vpngate_linux.server_storage import CacheStore
 from vpngate_linux.servers import parse_server_csv
 from vpngate_linux.tui import VpnGateTui, load_cached_candidates
@@ -45,6 +46,30 @@ vpn1,8.8.8.8,100,10,300000000,Japan,JP,2,1000,5,10,2,operator,message,
 
                 self.assertEqual(table.row_count, 1)
                 self.assertIn("Loaded 1 candidate", str(message.content))
+
+    async def test_local_tcp_result_is_rendered_in_the_table(self) -> None:
+        payload = """#HostName,IP,Score,Ping,Speed,CountryLong,CountryShort,NumVpnSessions,Uptime,TotalUsers,TotalTraffic,LogType,Operator,Message,OpenVPN_ConfigData_Base64
+vpn1,8.8.8.8,100,10,300000000,Japan,JP,2,1000,5,10,2,operator,message,
+*
+"""
+        server = parse_server_csv(payload).servers[0]
+        cache = type("Cache", (), {"servers": (server,)})()
+        result = TcpLatencyResult(
+            server=server,
+            median_ms=42.5,
+            successful_attempts=3,
+            attempts=3,
+        )
+        app = VpnGateTui()
+
+        with patch.object(CacheStore, "load", return_value=cache):
+            async with app.run_test(size=(120, 35)):
+                app._apply_latency_results((result,))
+                table = app.query_one("#servers", DataTable)
+                message = app.query_one("#message", Static)
+
+                self.assertEqual(str(table.get_row_at(0)[3]), "42.5 ms")
+                self.assertIn("Measured 1/1 reachable", str(message.content))
 
 
 if __name__ == "__main__":

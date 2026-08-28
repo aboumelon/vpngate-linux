@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import pwd
 import tempfile
 from urllib.parse import urlsplit, urlunsplit
 
@@ -13,6 +14,31 @@ from .servers import ServerCache
 
 
 DEFAULT_SOURCE_URL = "https://www.vpngate.net/api/iphone/"
+
+
+def default_cache_path() -> Path:
+    """Return the cache path for the user who launched the command.
+
+    The TUI runs as root because connection management changes system networking.
+    Under sudo, platformdirs would otherwise resolve the cache below root's home
+    even though the server refresh was run by the desktop user.
+    """
+
+    if os.geteuid() == 0:
+        sudo_uid = os.environ.get("SUDO_UID")
+        if sudo_uid:
+            try:
+                invoking_user = pwd.getpwuid(int(sudo_uid))
+            except (KeyError, ValueError):
+                pass
+            else:
+                return (
+                    Path(invoking_user.pw_dir)
+                    / ".cache"
+                    / "vpngate-linux"
+                    / "servers.json"
+                )
+    return user_cache_path("vpngate-linux") / "servers.json"
 
 
 def normalize_source_url(value: str) -> str:
@@ -100,7 +126,7 @@ class SourceStore:
 
 class CacheStore:
     def __init__(self, path: Path | None = None) -> None:
-        self.path = path or user_cache_path("vpngate-linux") / "servers.json"
+        self.path = path or default_cache_path()
 
     def save(self, cache: ServerCache) -> None:
         _atomic_json_write(self.path, cache.model_dump(mode="json"))

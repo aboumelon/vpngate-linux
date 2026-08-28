@@ -1,6 +1,7 @@
 from pathlib import Path
 import subprocess
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -17,6 +18,7 @@ from vpngate_linux.server_storage import (
     CacheStore,
     DEFAULT_SOURCE_URL,
     SourceStore,
+    default_cache_path,
     normalize_source_url,
     require_http_opt_in,
 )
@@ -88,6 +90,40 @@ class SourceStoreTests(unittest.TestCase):
 
 
 class CacheAndRefreshTests(unittest.TestCase):
+    def test_default_cache_uses_the_invoking_user_under_sudo(self) -> None:
+        invoking_user = SimpleNamespace(pw_dir="/home/example")
+
+        with (
+            patch("vpngate_linux.server_storage.os.geteuid", return_value=0),
+            patch.dict("os.environ", {"SUDO_UID": "1000"}, clear=True),
+            patch(
+                "vpngate_linux.server_storage.pwd.getpwuid",
+                return_value=invoking_user,
+            ) as getpwuid,
+        ):
+            path = default_cache_path()
+
+        self.assertEqual(
+            path,
+            Path("/home/example/.cache/vpngate-linux/servers.json"),
+        )
+        getpwuid.assert_called_once_with(1000)
+
+    def test_default_cache_falls_back_for_an_invalid_sudo_uid(self) -> None:
+        expected = Path("/tmp/example-cache/vpngate-linux/servers.json")
+
+        with (
+            patch("vpngate_linux.server_storage.os.geteuid", return_value=0),
+            patch.dict("os.environ", {"SUDO_UID": "invalid"}, clear=True),
+            patch(
+                "vpngate_linux.server_storage.user_cache_path",
+                return_value=expected.parent,
+            ),
+        ):
+            path = default_cache_path()
+
+        self.assertEqual(path, expected)
+
     def test_import_size_limit_is_bounded(self) -> None:
         self.assertEqual(MAX_IMPORT_BYTES, 25 * 1024 * 1024)
 

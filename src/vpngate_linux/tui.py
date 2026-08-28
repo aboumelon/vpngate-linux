@@ -14,6 +14,7 @@ from .connection_session import (
     disconnect_vpn,
     inspect_connection_status,
 )
+from .server_latency import TcpLatencyResult, probe_server_latencies
 from .server_selection import SelectionCriteria, select_servers
 from .server_storage import CacheStore
 from .servers import ServerRecord
@@ -63,6 +64,7 @@ class VpnGateTui(App[None]):
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("l", "load_servers", "Load servers"),
+        ("m", "measure_latency", "Measure TCP"),
         ("s", "show_status", "Status"),
     ]
 
@@ -75,6 +77,7 @@ class VpnGateTui(App[None]):
         with Horizontal(id="controls"):
             yield Input(placeholder="Country code, e.g. JP", id="country")
             yield Button("Load cached servers", id="load", variant="primary")
+            yield Button("Measure TCP latency", id="measure")
             yield Button("Connect selected", id="connect", variant="success")
             yield Button("Disconnect", id="disconnect", variant="warning")
             yield Button("Status", id="status")
@@ -84,7 +87,15 @@ class VpnGateTui(App[None]):
 
     def on_mount(self) -> None:
         table = self.query_one("#servers", DataTable)
-        table.add_columns("Rank", "IP", "Country", "Ping", "Speed", "Sessions")
+        table.add_columns(
+            "Rank",
+            "IP",
+            "Country",
+            "Local TCP",
+            "Source ping",
+            "Source speed",
+            "Sessions",
+        )
         self.action_load_servers()
 
     def _message(self, text: str) -> None:
@@ -104,23 +115,45 @@ class VpnGateTui(App[None]):
             self._message(f"Could not load cached servers: {error}")
             return
         self.candidates = candidates
+        self._render_candidates()
+        if candidates:
+            self._message(
+                f"Loaded {len(candidates)} candidates. Measure TCP latency "
+                "before selecting a server."
+            )
+        else:
+            self._message("No cached server matches this country filter.")
+
+    def _render_candidates(
+        self,
+        results: tuple[TcpLatencyResult, ...] | None = None,
+    ) -> None:
+        measured = {result.server.ip: result for result in results or ()}
         table = self.query_one("#servers", DataTable)
         table.clear()
-        for rank, server in enumerate(candidates, start=1):
+        for rank, server in enumerate(self.candidates, start=1):
+            result = measured.get(server.ip)
+            if result is None:
+                local_latency = "not tested"
+            elif result.median_ms is None:
+                local_latency = "unreachable"
+            else:
+                local_latency = f"{result.median_ms:.1f} ms"
             table.add_row(
                 str(rank),
                 str(server.ip),
                 server.country_short,
+                local_latency,
                 f"{server.ping_ms} ms",
                 f"{server.speed_mbps:.1f} Mbps",
                 str(server.sessions),
             )
-        if candidates:
-            self._message(
-                f"Loaded {len(candidates)} candidates. Select one and connect."
-            )
-        else:
-            self._message("No cached server matches this country filter.")
+
+    def action_measure_latency(self) -> None:
+        if not self.candidates:
+            self._message("Load cached servers before measuring TCP latency.")
+            return
+        self.measure_latency_worker(self.candidates)
 
     def action_show_status(self) -> None:
         self.show_status_worker()
@@ -128,6 +161,8 @@ class VpnGateTui(App[None]):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "load":
             self.action_load_servers()
+        elif event.button.id == "measure":
+            self.action_measure_latency()
         elif event.button.id == "connect":
             server = self._selected_server()
             if server is None:
@@ -143,6 +178,34 @@ class VpnGateTui(App[None]):
                 self.disconnect_worker()
         elif event.button.id == "status":
             self.action_show_status()
+
+    @work(thread=True, exclusive=True, group="latency-operation")
+    def measure_latency_worker(
+        self,
+        candidates: tuple[ServerRecord, ...],
+    ) -> None:
+        self.call_from_thread(
+            self._message,
+            f"Measuring TCP/443 latency for {len(candidates)} servers...",
+        )
+        try:
+            results = probe_server_latencies(candidates)
+        except (OSError, ValueError) as error:
+            self.call_from_thread(self._message, f"TCP measurement failed: {error}")
+            return
+        self.call_from_thread(self._apply_latency_results, results)
+
+    def _apply_latency_results(
+        self,
+        results: tuple[TcpLatencyResult, ...],
+    ) -> None:
+        self.candidates = tuple(result.server for result in results)
+        self._render_candidates(results)
+        reachable = sum(result.reachable for result in results)
+        self._message(
+            f"Measured {reachable}/{len(results)} reachable servers. "
+            "Rows are ranked by the median of 3 local TCP/443 attempts."
+        )
 
     @work(thread=True, exclusive=True, group="vpn-operation")
     def connect_worker(self, server_ip: str) -> None:
