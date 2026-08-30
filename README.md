@@ -40,16 +40,50 @@ uv run vpngate doctor
 
 ## Local installation
 
-The installer does not download or compile SoftEther. Pass an existing,
-reviewed SoftEther VPN Client directory:
+This is a source-based installer for compatible Linux desktops, not a universal
+one-click package. It requires the commands listed above, a cloned project
+checkout, and an existing reviewed SoftEther VPN Client directory. The
+installer deliberately does not download SoftEther or install operating-system
+packages.
+
+A new user must first install the requirements, obtain a compatible SoftEther
+VPN Client directory containing `vpnclient`, `vpncmd`, and `hamcore.se2`, then
+clone and install the project:
 
 ```console
-./install.sh /home/user/path/to/vpnclient
+git clone https://github.com/aboumelon/vpngate-linux.git
+cd vpngate-linux
+./install.sh /absolute/path/to/vpnclient
 ```
 
-The installer synchronizes the local Python environment, installs the
+The installer verifies required commands, synchronizes the locked Python
+environment, installs user command and desktop launchers, installs the
 SoftEther service under `/usr/local/vpnclient`, and installs the narrow
-AppArmor rule when the Ubuntu `dhclient` profile is present.
+AppArmor rule when the Ubuntu `dhclient` profile is present. It requests sudo
+only for the system service and AppArmor steps.
+
+After installation, open `VPN Gate Linux` from the desktop application menu or
+run:
+
+```console
+vpngate doctor
+vpngate servers refresh
+vpngate-gui
+```
+
+The desktop launcher opens a terminal and requests sudo authentication because
+the TUI changes system routes and DNS. The launchers point to this checkout's
+`.venv`, so rerun the launcher installer after moving the project directory:
+
+```console
+./scripts/install-user-launchers.sh
+```
+
+Remove only the user launchers with:
+
+```console
+./scripts/remove-user-launchers.sh
+```
 
 The individual installation steps are also available:
 
@@ -148,15 +182,20 @@ sudo ./scripts/verify-real-connection.sh 219.100.37.180
 
 ## Terminal interface
 
-The TUI shows cached servers and provides local TCP latency measurement,
-Connect, Disconnect, and Status actions. Root privileges are needed because
-the connection actions change networking:
+The TUI can refresh and load the server cache, measure local TCP latency, and
+provide Connect, Disconnect, and Status actions. Refresh is executed as the
+original desktop user even though the TUI runs through sudo, preventing a
+root-owned user cache. Root privileges are needed because connection actions
+change networking:
+
+![vpngate-linux terminal interface](assets/screenshots/vpngate-tui.png)
 
 ```console
 sudo .venv/bin/vpngate gui
 ```
 
-Refresh or import the server cache before opening the TUI. Press `q` to exit.
+Use `Refresh servers` to download a current list, then measure latency before
+connecting. Press `q` to exit.
 
 ## Isolated diagnostic checkpoints
 

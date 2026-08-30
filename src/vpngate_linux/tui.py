@@ -5,7 +5,7 @@ from pathlib import Path
 
 from textual import work
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal
+from textual.containers import HorizontalScroll
 from textual.widgets import Button, DataTable, Footer, Header, Input, Static
 
 from .connection_session import (
@@ -14,6 +14,7 @@ from .connection_session import (
     disconnect_vpn,
     inspect_connection_status,
 )
+from .gui_refresh import GuiRefreshResult, refresh_server_cache
 from .server_latency import TcpLatencyResult, probe_server_latencies
 from .server_selection import SelectionCriteria, select_servers
 from .server_storage import CacheStore
@@ -63,6 +64,7 @@ class VpnGateTui(App[None]):
 
     BINDINGS = [
         ("q", "quit", "Quit"),
+        ("r", "refresh_servers", "Refresh servers"),
         ("l", "load_servers", "Load servers"),
         ("m", "measure_latency", "Measure TCP"),
         ("s", "show_status", "Status"),
@@ -74,9 +76,10 @@ class VpnGateTui(App[None]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Horizontal(id="controls"):
+        with HorizontalScroll(id="controls"):
             yield Input(placeholder="Country code, e.g. JP", id="country")
-            yield Button("Load cached servers", id="load", variant="primary")
+            yield Button("Refresh servers", id="refresh", variant="primary")
+            yield Button("Load cached servers", id="load")
             yield Button("Measure TCP latency", id="measure")
             yield Button("Connect selected", id="connect", variant="success")
             yield Button("Disconnect", id="disconnect", variant="warning")
@@ -155,11 +158,16 @@ class VpnGateTui(App[None]):
             return
         self.measure_latency_worker(self.candidates)
 
+    def action_refresh_servers(self) -> None:
+        self.refresh_servers_worker()
+
     def action_show_status(self) -> None:
         self.show_status_worker()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "load":
+        if event.button.id == "refresh":
+            self.action_refresh_servers()
+        elif event.button.id == "load":
             self.action_load_servers()
         elif event.button.id == "measure":
             self.action_measure_latency()
@@ -178,6 +186,24 @@ class VpnGateTui(App[None]):
                 self.disconnect_worker()
         elif event.button.id == "status":
             self.action_show_status()
+
+    @work(thread=True, exclusive=True, group="server-refresh")
+    def refresh_servers_worker(self) -> None:
+        self.call_from_thread(self._message, "Refreshing the VPN Gate server cache...")
+        try:
+            result = refresh_server_cache()
+        except Exception as error:
+            self.call_from_thread(self._message, f"Server refresh failed: {error}")
+            return
+        self.call_from_thread(self._apply_refresh_result, result)
+
+    def _apply_refresh_result(self, result: GuiRefreshResult) -> None:
+        self.action_load_servers()
+        if self.candidates:
+            self._message(
+                f"Server cache refreshed. Loaded {len(self.candidates)} candidates.\n"
+                f"{result.detail}"
+            )
 
     @work(thread=True, exclusive=True, group="latency-operation")
     def measure_latency_worker(

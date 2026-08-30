@@ -14,15 +14,25 @@ if [[ $# -ne 1 ]]; then
     exit 1
 fi
 
-if ! command -v uv >/dev/null 2>&1; then
-    echo "uv is required. Install it before running this local installer." >&2
+missing_commands=()
+for command_name in uv sudo systemctl resolvectl ip dhclient curl; do
+    if ! command -v "${command_name}" >/dev/null 2>&1; then
+        missing_commands+=("${command_name}")
+    fi
+done
+if (( ${#missing_commands[@]} > 0 )); then
+    echo "Missing required commands: ${missing_commands[*]}" >&2
+    echo "Install the requirements listed in README.md, then run this installer again." >&2
     exit 1
 fi
 
 readonly SOFTETHER_SOURCE="$(realpath "$1")"
 
 echo "Synchronizing the local Python environment..."
-uv sync
+uv sync --locked
+
+echo "Installing user command and desktop launchers..."
+"${PROJECT_ROOT}/scripts/install-user-launchers.sh"
 
 echo "Installing the audited SoftEther systemd service..."
 sudo "${PROJECT_ROOT}/scripts/install-systemd-service.sh" "${SOFTETHER_SOURCE}"
@@ -33,5 +43,5 @@ if [[ -f /etc/apparmor.d/sbin.dhclient ]]; then
 fi
 
 echo "Installation completed."
-echo "Run: ${PROJECT_ROOT}/.venv/bin/vpngate doctor"
-echo "Run TUI: sudo ${PROJECT_ROOT}/.venv/bin/vpngate gui"
+echo "Run: ${HOME}/.local/bin/vpngate doctor"
+echo "Run TUI: ${HOME}/.local/bin/vpngate-gui"

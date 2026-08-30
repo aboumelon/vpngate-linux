@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from textual.widgets import DataTable, Static
+from textual.widgets import Button, DataTable, Static
 
 from vpngate_linux.server_latency import TcpLatencyResult
 from vpngate_linux.server_storage import CacheStore
@@ -43,9 +43,11 @@ vpn1,8.8.8.8,100,10,300000000,Japan,JP,2,1000,5,10,2,operator,message,
             async with app.run_test(size=(100, 35)):
                 table = app.query_one("#servers", DataTable)
                 message = app.query_one("#message", Static)
+                refresh = app.query_one("#refresh", Button)
 
                 self.assertEqual(table.row_count, 1)
                 self.assertIn("Loaded 1 candidate", str(message.content))
+                self.assertEqual(str(refresh.label), "Refresh servers")
 
     async def test_local_tcp_result_is_rendered_in_the_table(self) -> None:
         payload = """#HostName,IP,Score,Ping,Speed,CountryLong,CountryShort,NumVpnSessions,Uptime,TotalUsers,TotalTraffic,LogType,Operator,Message,OpenVPN_ConfigData_Base64

@@ -13,6 +13,19 @@ class InstallerTests(unittest.TestCase):
         self.assertNotIn("apt-get", installer)
         self.assertIn("install-systemd-service.sh", installer)
         self.assertIn("install-dhclient-apparmor-policy.sh", installer)
+        self.assertIn("install-user-launchers.sh", installer)
+        self.assertIn("uv sync --locked", installer)
+
+    def test_user_launcher_opens_the_tui_in_a_terminal_desktop_entry(self) -> None:
+        installer = (
+            PROJECT_ROOT / "scripts" / "install-user-launchers.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("Terminal=true", installer)
+        self.assertIn("Icon=network-vpn", installer)
+        self.assertIn("vpngate-gui", installer)
+        self.assertIn("exec sudo", installer)
+        self.assertNotIn("/home/armin", installer)
 
     def test_real_verifier_always_installs_a_cleanup_trap(self) -> None:
         verifier = (
